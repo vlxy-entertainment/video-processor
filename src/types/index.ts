@@ -42,7 +42,7 @@ export type TiktokAccountStatus = Database['public']['Enums']['tiktok_account_st
  */
 export const VideoProcessingQueueItemSchema = z.object({
   id: z.string().uuid().optional(),
-  index: z.number().int().min(-1), // Allow -1 for priority items
+  index: z.number().int().min(-2), // Allow -2 for priority items
   status: z.enum(['queued', 'processing', 'processed', 'failed']).default('queued'),
   progress: z.number().int().min(0).max(100).default(0),
   video_name: z.string().nullable().optional(),
