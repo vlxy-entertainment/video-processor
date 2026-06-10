@@ -36,13 +36,13 @@ export class NvidiaEncodingStrategy implements EncodingStrategy {
   }
 
   getOptions(metadata: ffmpeg.FfprobeData): string[] {
-    const targetBitrateKbps = 10000000 / 1000;
+    // Ceiling so a high-bitrate source cannot blow the per-segment budget;
+    // capped VBR keeps modest sources small while staying visually identical.
+    const maxBitrateKbps = 10_000;
 
-    // Get video dimensions
     const width = metadata.streams?.[0]?.width || 1920;
     const height = metadata.streams?.[0]?.height || 1080;
 
-    // Scale down to 1080p if video is higher resolution
     let scaleFilter = '';
     if (width > 1920 || height > 1080) {
       scaleFilter = `scale=1920:1080:force_original_aspect_ratio=decrease`;
@@ -55,21 +55,16 @@ export class NvidiaEncodingStrategy implements EncodingStrategy {
       '-preset',
       this.preset,
       '-rc',
-      'cbr',
-      '-b:v',
-      `${targetBitrateKbps}k`,
+      'vbr',
+      '-cq',
+      '23',
       '-maxrate',
-      `${targetBitrateKbps}k`,
+      `${maxBitrateKbps}k`,
       '-bufsize',
-      `${targetBitrateKbps}k`,
-      '-g',
-      '30',
-      '-keyint_min',
-      '30',
-      '-sc_threshold',
-      '0',
-      '-force_key_frames',
-      'expr:gte(t,n_forced*1)',
+      `${maxBitrateKbps * 2}k`,
+      // NOTE: keyframe placement (-g / -force_key_frames) is owned by
+      // VideoProcessor.runFFmpegConversion so segments align to segment
+      // boundaries. Do not set it here.
       '-c:a',
       'aac',
       '-b:a',
@@ -78,7 +73,6 @@ export class NvidiaEncodingStrategy implements EncodingStrategy {
       '2',
     ];
 
-    // Add scale filter if needed
     if (scaleFilter) {
       options.push('-vf', scaleFilter);
     }
