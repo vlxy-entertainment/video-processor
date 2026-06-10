@@ -4,12 +4,15 @@ import fsSync from 'fs';
 import path from 'path';
 import { logger } from '@/utils/logger';
 import { EncodingStrategyFactory } from '@/services/encoding/EncodingStrategyFactory';
+import { envConfig } from '@/config';
+import { ProcessingPlanner } from '@/services/processingPlanner';
 
 /**
  * Service for processing videos using FFmpeg with hardware acceleration
  */
 export class VideoProcessor {
   private readonly maxSegmentSizeMB = 5; // Reduced from 9MB to 5MB for better compatibility
+  private readonly planner = new ProcessingPlanner();
 
   /**
    * Processes a video from the queue with hardware acceleration
@@ -29,20 +32,37 @@ export class VideoProcessor {
       const outputDir = path.join(process.cwd(), 'processed', queueItemId);
       await fs.mkdir(outputDir, { recursive: true });
 
-      // Step 2: Convert video to HLS with hardware acceleration
+      // Step 2: Decide route (remux vs transcode)
+      const planStartTime = Date.now();
+      const plan = await this.planner.plan(videoUrl);
+      logger.info(`🧭 Route: ${plan.route} — ${plan.reason}`);
+      stepTimings['planning'] = Date.now() - planStartTime;
+
+      // Step 3: Produce HLS .ts segments via the chosen route
       const hlsStartTime = Date.now();
-      await this.convertVideoToHLS(videoUrl, outputDir);
+      if (plan.route === 'remux') {
+        await this.runRemuxToHls(videoUrl, outputDir);
+
+        // Hard re-check: if the predictor was wrong and a segment is over budget,
+        // fall back to a transcode once.
+        const oversized = await this.validateSegmentSizes(outputDir);
+        if (oversized.length > 0) {
+          logger.warn(
+            `⚠️ Remux produced ${oversized.length} oversize segment(s); ` +
+              `falling back to transcode`
+          );
+          await this.clearTsAndPlaylist(outputDir);
+          await this.convertVideoToHLS(videoUrl, outputDir);
+        }
+      } else {
+        await this.convertVideoToHLS(videoUrl, outputDir);
+      }
       stepTimings['hls_conversion'] = Date.now() - hlsStartTime;
 
-      // Step 3: Remove FFmpeg metadata from TS segments
-      const metadataStartTime = Date.now();
-      await this.removeFFmpegMetadataFromTsSegments(outputDir);
-      stepTimings['metadata_removal'] = Date.now() - metadataStartTime;
-
-      // Step 4: Embed segments into PNG files
-      const pngEmbedStartTime = Date.now();
-      await this.embedSegmentsToPng(outputDir);
-      stepTimings['png_embedding'] = Date.now() - pngEmbedStartTime;
+      // Step 4: Strip metadata + wrap segments into PNG (single pass)
+      const wrapStartTime = Date.now();
+      await this.wrapSegmentsInPng(outputDir);
+      stepTimings['png_wrap'] = Date.now() - wrapStartTime;
 
       // Step 5: Update playlist to reference PNG files
       const playlistUpdateStartTime = Date.now();
@@ -54,12 +74,7 @@ export class VideoProcessor {
       await this.embedPlaylistToPng(outputDir);
       stepTimings['playlist_embedding'] = Date.now() - playlistEmbedStartTime;
 
-      // Step 7: Clean up original TS files
-      const cleanupStartTime = Date.now();
-      await this.cleanupTsFiles(outputDir);
-      stepTimings['ts_cleanup'] = Date.now() - cleanupStartTime;
-
-      // Step 8: Validate the conversion
+      // Step 7: Validate the conversion
       const validationStartTime = Date.now();
       await this.validateConversion(outputDir);
       stepTimings['validation'] = Date.now() - validationStartTime;
@@ -93,7 +108,7 @@ export class VideoProcessor {
   }
 
   /**
-   * Convert video to HLS using hardware acceleration with fallback
+   * Convert video to HLS by re-encoding via the selected encoding strategy.
    * @param inputPath Input video path
    * @param outputDir Output directory
    * @returns Promise resolving to playlist path
@@ -101,47 +116,20 @@ export class VideoProcessor {
   private async convertVideoToHLS(inputPath: string, outputDir: string): Promise<string> {
     const playlistPath = path.join(outputDir, 'playlist.m3u8');
 
-    try {
-      // Get video metadata
-      const metadata = await this.getVideoMetadata(inputPath);
-      const ffmpegMetadata = await this.getFFmpegMetadata(inputPath);
+    const metadata = await this.getVideoMetadata(inputPath);
+    const ffmpegMetadata = await this.getFFmpegMetadata(inputPath);
+    const segmentDuration = this.calculateSegmentDuration();
 
-      // Calculate optimal segment duration
-      const segmentDuration = this.calculateSegmentDuration();
+    const encodingStrategy = await EncodingStrategyFactory.createStrategy();
+    const encodingOptions = encodingStrategy.getOptions(ffmpegMetadata);
 
-      // Get encoding strategy
-      const encodingStrategy = await EncodingStrategyFactory.createStrategy();
-      const encodingOptions = encodingStrategy.getOptions(ffmpegMetadata);
+    logger.info(`🚀 Using encoding strategy: ${encodingStrategy.getName()}`);
+    logger.info(`📊 File size: ${metadata.fileSizeMB.toFixed(2)} MB`);
+    logger.info(`⏱️ Video duration: ${metadata.durationSeconds.toFixed(2)} seconds`);
+    logger.info(`🎯 Segment duration: ${segmentDuration.toFixed(2)} seconds`);
 
-      logger.info(`🚀 Using encoding strategy: ${encodingStrategy.getName()}`);
-      logger.info(`📊 File size: ${metadata.fileSizeMB.toFixed(2)} MB`);
-      logger.info(`⏱️ Video duration: ${metadata.durationSeconds.toFixed(2)} seconds`);
-      logger.info(`🎯 Segment duration: ${segmentDuration.toFixed(2)} seconds`);
-
-      // Convert to HLS with hardware acceleration
-      await this.runFFmpegConversion(inputPath, outputDir, segmentDuration, encodingOptions);
-
-      return playlistPath;
-    } catch (error) {
-      logger.warn('⚠️ Hardware encoding failed, trying CPU fallback:', error);
-
-      try {
-        // Fallback to CPU encoding
-        const ffmpegMetadata = await this.getFFmpegMetadata(inputPath);
-        const segmentDuration = this.calculateSegmentDuration();
-        const encodingStrategy = await EncodingStrategyFactory.createStrategy();
-        const encodingOptions = encodingStrategy.getOptions(ffmpegMetadata);
-
-        logger.info(`🔄 Using CPU fallback encoding: ${encodingStrategy.getName()}`);
-
-        await this.runFFmpegConversion(inputPath, outputDir, segmentDuration, encodingOptions);
-
-        return playlistPath;
-      } catch (fallbackError) {
-        logger.error('❌ Both hardware and CPU encoding failed:', fallbackError);
-        throw fallbackError;
-      }
-    }
+    await this.runFFmpegConversion(inputPath, outputDir, segmentDuration, encodingOptions);
+    return playlistPath;
   }
 
   /**
@@ -176,6 +164,10 @@ export class VideoProcessor {
           `expr:gte(t,n_forced*${segmentDuration})`,
           '-g',
           Math.round(segmentDuration * 30).toString(),
+          '-keyint_min',
+          Math.round(segmentDuration * 30).toString(),
+          '-sc_threshold',
+          '0',
           '-hls_flags',
           'independent_segments',
         ])
@@ -191,6 +183,52 @@ export class VideoProcessor {
         })
         .on('error', (error, stdout, stderr) => {
           logger.error('❌ FFmpeg conversion failed:', {
+            error: error.message,
+            stdout: stdout || 'No stdout',
+            stderr: stderr || 'No stderr',
+          });
+          reject(error);
+        })
+        .run();
+    });
+  }
+
+  /**
+   * Remuxes (stream-copies) the source into HLS without re-encoding. Segments
+   * are cut at the source's keyframes, so durations are >= the target and the
+   * `<5MB` budget is verified afterward by the caller.
+   * @param inputPath Source video URL/path.
+   * @param outputDir Output directory.
+   */
+  private async runRemuxToHls(inputPath: string, outputDir: string): Promise<void> {
+    const playlistPath = path.join(outputDir, 'playlist.m3u8');
+    const segmentPattern = path.join(outputDir, 'segment_%03d.ts');
+    const segmentDuration = envConfig.HLS_SEGMENT_DURATION_SECONDS;
+
+    return new Promise((resolve, reject) => {
+      ffmpeg(inputPath)
+        .outputOptions([
+          '-c',
+          'copy',
+          '-f',
+          'hls',
+          '-hls_time',
+          segmentDuration.toString(),
+          '-hls_list_size',
+          '0',
+          '-hls_segment_filename',
+          segmentPattern,
+          '-hls_flags',
+          'independent_segments',
+        ])
+        .output(playlistPath)
+        .on('start', () => logger.info('🚀 Starting HLS remux (stream copy)'))
+        .on('end', () => {
+          logger.info('✅ HLS remux completed');
+          resolve();
+        })
+        .on('error', (error, stdout, stderr) => {
+          logger.error('❌ HLS remux failed:', {
             error: error.message,
             stdout: stdout || 'No stdout',
             stderr: stderr || 'No stderr',
@@ -285,135 +323,72 @@ export class VideoProcessor {
   }
 
   /**
-   * Remove FFmpeg metadata from TS segment files before PNG embedding
-   * @param outputDir Directory containing the TS segments
+   * Strips FFmpeg metadata and wraps each `.ts` segment into a `.png` in a single
+   * pass, then removes the `.ts`. Replaces the former three separate passes.
+   * @param outputDir Directory containing the `.ts` segments.
    */
-  private async removeFFmpegMetadataFromTsSegments(outputDir: string): Promise<void> {
-    logger.info('🧹 Removing FFmpeg metadata from TS segment files...');
+  private async wrapSegmentsInPng(outputDir: string): Promise<void> {
+    logger.info('🖼️ Stripping metadata and wrapping segments into PNG (single pass)...');
 
     const files = await fs.readdir(outputDir);
     const tsFiles = files.filter(file => file.endsWith('.ts') && file.startsWith('segment_'));
+    logger.info(`Found ${tsFiles.length} TS segment files to wrap`);
 
-    logger.info(`Found ${tsFiles.length} TS segment files to clean`);
-
-    for (const tsFile of tsFiles) {
-      const tsPath = path.join(outputDir, tsFile);
-
-      try {
-        // Read the TS segment file
-        const segmentData = await fs.readFile(tsPath);
-        logger.debug(`Read ${segmentData.length} bytes from segment file: ${tsFile}`);
-
-        // Find the FFmpeg metadata in the first packet
-        const ffmpegStart = segmentData.indexOf(Buffer.from('FFmpeg'));
-        if (ffmpegStart === -1) {
-          logger.debug(`No FFmpeg metadata found in ${tsFile}`);
-          continue;
-        }
-
-        logger.debug(`Found FFmpeg metadata at byte ${ffmpegStart} in ${tsFile}`);
-
-        // Find the end of the first packet (next sync byte at 188-byte boundary)
-        const firstPacketEnd = 188;
-
-        // Extract the first packet header (before FFmpeg metadata)
-        const packetHeader = segmentData.subarray(0, ffmpegStart - 6); // 6 bytes before "FFmpeg"
-
-        // Find the next sync byte after the first packet
-        let nextSyncByte = firstPacketEnd;
-        while (nextSyncByte < segmentData.length && segmentData[nextSyncByte] !== 0x47) {
-          nextSyncByte++;
-        }
-
-        if (nextSyncByte >= segmentData.length) {
-          logger.debug(`Could not find next sync byte in ${tsFile}`);
-          continue;
-        }
-
-        logger.debug(`Next sync byte found at ${nextSyncByte} in ${tsFile}`);
-
-        // Create cleaned data: header + rest of file from next sync byte
-        const cleanedData = Buffer.concat([packetHeader, segmentData.subarray(nextSyncByte)]);
-
-        // Write the cleaned file back
-        await fs.writeFile(tsPath, cleanedData);
-
-        const savedBytes = segmentData.length - cleanedData.length;
-        logger.debug(
-          `🗜️ Removed ${savedBytes} bytes of FFmpeg metadata from ${tsFile} (${segmentData.length} → ${cleanedData.length})`
-        );
-      } catch (error) {
-        logger.warn(`⚠️ Failed to remove FFmpeg metadata from ${tsFile}:`, error);
-        // Continue with other segments even if one fails
-      }
-    }
-
-    logger.info('✅ FFmpeg metadata removal from TS segments completed');
-  }
-
-  /**
-   * Embed all TS segments into PNG files
-   * @param outputDir Directory containing the segments
-   */
-  private async embedSegmentsToPng(outputDir: string): Promise<void> {
-    logger.info('🖼️ Embedding TS segments into PNG files...');
-
-    const files = await fs.readdir(outputDir);
-    const tsFiles = files.filter(file => file.endsWith('.ts'));
-
-    logger.info(`Found ${tsFiles.length} TS files to convert to PNG`);
+    // 1x1 transparent PNG used as the carrier; payload is appended after IEND.
+    const carrierPng = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64'
+    );
 
     for (const tsFile of tsFiles) {
       const tsPath = path.join(outputDir, tsFile);
-      const pngFile = tsFile.replace('.ts', '.png');
-      const pngPath = path.join(outputDir, pngFile);
+      const pngPath = path.join(outputDir, tsFile.replace('.ts', '.png'));
 
       try {
-        this.embedSegmentInPng(tsPath, pngPath);
-        logger.debug(`✅ Converted ${tsFile} to ${pngFile}`);
+        const raw = await fs.readFile(tsPath);
+        const cleaned = this.stripFFmpegMetadata(raw);
+        await fs.writeFile(pngPath, Buffer.concat([carrierPng, cleaned]));
+        await fs.unlink(tsPath);
       } catch (error) {
-        logger.error(`❌ Failed to convert ${tsFile} to PNG:`, error);
+        logger.error(`❌ Failed to wrap ${tsFile} into PNG:`, error);
         throw error;
       }
     }
 
-    logger.info(`✅ Successfully embedded ${tsFiles.length} segments into PNG files`);
+    logger.info(`✅ Wrapped ${tsFiles.length} segments into PNG files`);
   }
 
   /**
-   * Embed a single TS segment into a PNG file
-   * @param segmentPath Path to the TS segment
-   * @param outputPath Optional output path for the PNG file
-   * @returns Path to the created PNG file
+   * Returns segment bytes with FFmpeg's first-packet metadata removed. If no
+   * metadata marker is present (common for remuxed segments), returns the input
+   * unchanged.
+   * @param segmentData Raw `.ts` bytes.
    */
-  private embedSegmentInPng(segmentPath: string, outputPath?: string): string {
-    try {
-      // Read the TS segment data
-      const segmentData = fsSync.readFileSync(segmentPath);
+  private stripFFmpegMetadata(segmentData: Buffer): Buffer {
+    const ffmpegStart = segmentData.indexOf(Buffer.from('FFmpeg'));
+    if (ffmpegStart === -1) return segmentData;
 
-      // Use a minimal PNG structure (1x1 transparent pixel)
-      const workingPngBuffer = Buffer.from(
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
-        'base64'
-      );
-
-      // Append segment data after the PNG structure
-      const pngBuffer = Buffer.concat([workingPngBuffer, segmentData]);
-
-      // Determine output path
-      const finalOutputPath = outputPath || segmentPath.replace('.ts', '.png');
-
-      // Write the PNG file
-      fsSync.writeFileSync(finalOutputPath, pngBuffer);
-
-      logger.debug(`📦 Created PNG with embedded segment: ${finalOutputPath}`);
-      logger.debug(`📊 Embedded ${segmentData.length} bytes of segment data`);
-
-      return finalOutputPath;
-    } catch (error) {
-      logger.error('❌ Error embedding segment in PNG:', error);
-      throw error;
+    const packetHeader = segmentData.subarray(0, ffmpegStart - 6);
+    let nextSyncByte = 188;
+    while (nextSyncByte < segmentData.length && segmentData[nextSyncByte] !== 0x47) {
+      nextSyncByte++;
     }
+    if (nextSyncByte >= segmentData.length) return segmentData;
+
+    return Buffer.concat([packetHeader, segmentData.subarray(nextSyncByte)]);
+  }
+
+  /**
+   * Removes `.ts` segments and the working playlist so a route can be re-run.
+   * @param outputDir Directory to clear.
+   */
+  private async clearTsAndPlaylist(outputDir: string): Promise<void> {
+    const files = await fs.readdir(outputDir);
+    await Promise.all(
+      files
+        .filter(f => f.endsWith('.ts') || f === 'playlist.m3u8')
+        .map(f => fs.unlink(path.join(outputDir, f)).catch(() => undefined))
+    );
   }
 
   /**
@@ -446,46 +421,23 @@ export class VideoProcessor {
    */
   private async embedPlaylistToPng(outputDir: string): Promise<void> {
     logger.info('📄 Embedding M3U8 playlist into PNG file...');
-
     const playlistPath = path.join(outputDir, 'playlist.m3u8');
     const playlistPngPath = path.join(outputDir, 'playlist.png');
 
+    const carrierPng = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64'
+    );
+
     try {
-      // Use the existing embedSegmentInPng method to embed the playlist
-      this.embedSegmentInPng(playlistPath, playlistPngPath);
-
-      // Remove the original M3U8 file after successful embedding
+      const playlistData = await fs.readFile(playlistPath);
+      await fs.writeFile(playlistPngPath, Buffer.concat([carrierPng, playlistData]));
       await fs.unlink(playlistPath);
-      logger.info('🗑️ Removed original M3U8 playlist file');
-
       logger.info('✅ Successfully embedded M3U8 playlist into PNG file');
     } catch (error) {
       logger.error('❌ Failed to embed M3U8 playlist into PNG:', error);
       throw error;
     }
-  }
-
-  /**
-   * Clean up original TS files after PNG conversion
-   * @param outputDir Directory containing the files
-   */
-  private async cleanupTsFiles(outputDir: string): Promise<void> {
-    logger.info('🧹 Cleaning up original TS files...');
-
-    const files = await fs.readdir(outputDir);
-    const tsFiles = files.filter(file => file.endsWith('.ts'));
-
-    for (const tsFile of tsFiles) {
-      const tsPath = path.join(outputDir, tsFile);
-      try {
-        await fs.unlink(tsPath);
-        logger.debug(`🗑️ Removed TS file: ${tsFile}`);
-      } catch (error) {
-        logger.warn(`⚠️ Failed to remove TS file ${tsFile}:`, error);
-      }
-    }
-
-    logger.info(`✅ Cleaned up ${tsFiles.length} TS files`);
   }
 
   /**
