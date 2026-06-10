@@ -51,12 +51,9 @@ export class IntelQsvEncodingStrategy implements EncodingStrategy {
       `${targetBitrateKbps}k`,
       '-bufsize',
       `${targetBitrateKbps}k`,
-      '-g',
-      '30',
-      '-keyint_min',
-      '30',
-      '-sc_threshold',
-      '0',
+      // NOTE: keyframe placement (-g / -keyint_min / -sc_threshold) is owned by
+      // VideoProcessor.runFFmpegConversion so segments align to segment
+      // boundaries. Do not set it here.
       '-c:a',
       'aac',
       '-b:a',
