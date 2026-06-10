@@ -5,12 +5,12 @@ import { sanitizeForLogging } from './errorSanitizer';
 /**
  * Custom formatter that sanitizes log data to prevent "Invalid string length" errors
  */
-const sanitizeFormat = winston.format((info) => {
+const sanitizeFormat = winston.format(info => {
   // Sanitize any error objects or large data in the info object
   if (info.error) {
     info.error = sanitizeForLogging(info.error);
   }
-  
+
   // Sanitize splat arguments (additional data passed to logger)
   // Winston uses splat for additional arguments: logger.error('msg', arg1, arg2)
   const splatSymbol = Symbol.for('splat');
@@ -19,7 +19,7 @@ const sanitizeFormat = winston.format((info) => {
       sanitizeForLogging(arg)
     );
   }
-  
+
   // Sanitize all other properties that might contain large data
   // Note: We iterate over keys to avoid mutating while iterating
   const keysToSanitize: string[] = [];
@@ -28,21 +28,21 @@ const sanitizeFormat = winston.format((info) => {
     if (typeof key === 'symbol') {
       continue;
     }
-    
+
     // Skip timestamp, level, message, service as they're safe
     if (['timestamp', 'level', 'message', 'service', 'error'].includes(key)) {
       continue;
     }
-    
+
     // Mark for sanitization
     keysToSanitize.push(key);
   }
-  
+
   // Sanitize marked keys
   for (const key of keysToSanitize) {
     info[key] = sanitizeForLogging(info[key]);
   }
-  
+
   return info;
 })();
 

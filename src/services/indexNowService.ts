@@ -14,8 +14,7 @@ export class IndexNowService {
     // IndexNow configuration from environment variables
     this.host = process.env.INDEXNOW_HOST || 'vlxy.org';
     this.key = process.env.INDEXNOW_KEY || '9633d3f0c7a6463fb08566f7959e0c7d';
-    this.keyLocation =
-      process.env.INDEXNOW_KEY_LOCATION || `https://${this.host}/${this.key}.txt`;
+    this.keyLocation = process.env.INDEXNOW_KEY_LOCATION || `https://${this.host}/${this.key}.txt`;
   }
 
   /**
@@ -54,8 +53,7 @@ export class IndexNowService {
       }
     } catch (error) {
       const axiosError = error as AxiosError;
-      const errorMessage =
-        axiosError.response?.data || axiosError.message || 'Unknown error';
+      const errorMessage = axiosError.response?.data || axiosError.message || 'Unknown error';
 
       // Log error but don't throw - IndexNow submission failure shouldn't fail video processing
       logger.error(`Failed to submit video ${videoId} to IndexNow:`, {
@@ -104,8 +102,7 @@ export class IndexNowService {
       }
     } catch (error) {
       const axiosError = error as AxiosError;
-      const errorMessage =
-        axiosError.response?.data || axiosError.message || 'Unknown error';
+      const errorMessage = axiosError.response?.data || axiosError.message || 'Unknown error';
 
       logger.error(`Failed to submit ${videoIds.length} videos to IndexNow:`, {
         status: axiosError.response?.status,
@@ -115,4 +112,3 @@ export class IndexNowService {
     }
   }
 }
-

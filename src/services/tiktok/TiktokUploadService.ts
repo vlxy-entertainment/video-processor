@@ -190,15 +190,16 @@ export class TiktokUploadService {
 
       // If not retryable or max retries exceeded, log the error and rethrow
       const statusCode = axiosError.response?.status;
-      
+
       // Extract response data safely - limit size to prevent "Invalid string length" errors
       let responseData: unknown = undefined;
       if (axiosError.response?.data) {
         try {
-          const dataStr = typeof axiosError.response.data === 'string' 
-            ? axiosError.response.data 
-            : JSON.stringify(axiosError.response.data);
-          
+          const dataStr =
+            typeof axiosError.response.data === 'string'
+              ? axiosError.response.data
+              : JSON.stringify(axiosError.response.data);
+
           // Limit response data to 5KB to prevent logging errors
           if (dataStr.length > 5000) {
             responseData = `${dataStr.substring(0, 5000)}...[truncated ${dataStr.length - 5000} chars]`;
@@ -209,7 +210,7 @@ export class TiktokUploadService {
           responseData = '[Unable to serialize response data]';
         }
       }
-      
+
       logger.error(`❌ Upload failed after ${attempt + 1} attempts:`, {
         fileName: path.basename(filePath),
         accountName: account.name,
