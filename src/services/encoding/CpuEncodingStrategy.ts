@@ -21,6 +21,7 @@ export class CpuEncodingStrategy implements EncodingStrategy {
       // Test if libx264 is available by running a simple FFmpeg command
       ffmpeg()
         .input('testsrc=duration=1:size=320x240:rate=1')
+        .inputOptions(['-f', 'lavfi'])
         .outputOptions(['-c:v', 'libx264', '-f', 'null'])
         .output('-')
         .on('error', () => {

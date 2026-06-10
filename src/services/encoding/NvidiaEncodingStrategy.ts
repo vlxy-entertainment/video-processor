@@ -21,6 +21,7 @@ export class NvidiaEncodingStrategy implements EncodingStrategy {
       // Test if NVENC is available by running a simple FFmpeg command
       ffmpeg()
         .input('testsrc=duration=1:size=320x240:rate=1')
+        .inputOptions(['-f', 'lavfi'])
         .outputOptions(['-c:v', 'h264_nvenc', '-f', 'null'])
         .output('-')
         .on('error', () => {
