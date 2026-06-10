@@ -52,9 +52,11 @@ The orchestrator (`src/services/tiktokUploadOrchestrator.ts`) uploads each segme
 
 When editing the embed/extract logic, the PNG↔payload boundary (`IEND` signature `49 45 4E 44 AE 42 60 82`) must stay consistent between `videoProcessor.ts` (writes) and `tiktokUploadOrchestrator.ts` (reads).
 
-### Encoding strategies (`src/services/encoding/`)
+### Routing & encoding strategies (`src/services/`)
 
-A Strategy + Factory pattern exists for GPU/CPU encoders (NVIDIA/AMD/Apple/Intel QSV/CPU). **Note:** `EncodingStrategyFactory.createStrategy()` currently always returns `NvidiaEncodingStrategy('p1')` — hardware detection is stubbed out. The README's "automatic hardware detection" claims do not match the code. The `videoProcessor` still has a CPU-fallback `try/catch`, but it re-creates the same NVENC strategy, so it does not actually fall back.
+Before encoding, `ProcessingPlanner` (`src/services/processingPlanner.ts`) probes the source (bitrate + max keyframe gap, bounded to the first 60s) and routes it: **remux** (`-c copy`, no re-encode, no GPU) when the predicted worst-case segment stays under `MAX_SEGMENT_SIZE_MB × SEGMENT_SIZE_SAFETY_MARGIN`, otherwise **transcode**. A remux that unexpectedly yields an oversize segment falls back to a one-shot transcode (`validateSegmentSizes` re-check in `processVideo`).
+
+For the transcode path, a Strategy + Factory pattern selects the encoder. `EncodingStrategyFactory.createStrategy()` probes the host **once** (cached) in priority order **NVENC → Intel QSV → libx264** and returns the first available; libx264 is the guaranteed fallback, so the same binary runs on a GPU box or a CPU-only server. Each strategy's `isAvailable()` runs a `-f lavfi` test encode. Keyframe placement is owned solely by `VideoProcessor.runFFmpegConversion` (not the strategies), and NVENC uses capped-quality VBR (`-cq` with a `-maxrate` ceiling) rather than fixed CBR.
 
 ### Upload resilience
 
