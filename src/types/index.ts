@@ -22,12 +22,56 @@ export const EnvConfigSchema = z.object({
     .default('5000'),
   TIKTOK_IMG_CDN: z.string().default('https://p21-ad-sg.ibyteimg.com/obj/'),
   TORBOX_TOKEN: z.string().min(1, 'TorBox token is required'),
+  MAX_SEGMENT_SIZE_MB: z
+    .string()
+    .transform(val => parseFloat(val))
+    .pipe(z.number().positive())
+    .default('5'),
+  SEGMENT_SIZE_SAFETY_MARGIN: z
+    .string()
+    .transform(val => parseFloat(val))
+    .pipe(z.number().positive().max(1))
+    .default('0.8'),
+  HLS_SEGMENT_DURATION_SECONDS: z
+    .string()
+    .transform(val => parseInt(val, 10))
+    .pipe(z.number().int().positive())
+    .default('5'),
 });
 
 /**
  * Environment configuration type
  */
 export type EnvConfig = z.infer<typeof EnvConfigSchema>;
+
+/**
+ * Which processing route the planner selected for a source.
+ * - `remux`: stream-copy (`-c copy`) into HLS — no re-encode, no GPU.
+ * - `transcode`: re-encode through the encoder ladder.
+ */
+export const ProcessingRouteSchema = z.enum(['remux', 'transcode']);
+
+/**
+ * The route to take for a source.
+ */
+export type ProcessingRoute = z.infer<typeof ProcessingRouteSchema>;
+
+/**
+ * Schema for a processing plan produced by the ProcessingPlanner.
+ */
+export const ProcessingPlanSchema = z.object({
+  /** Selected route. */
+  route: ProcessingRouteSchema,
+  /** Human-readable reason the route was chosen (for logs). */
+  reason: z.string(),
+  /** Predicted worst-case segment size in MB (undefined when probing failed). */
+  predictedMaxSegmentMB: z.number().optional(),
+});
+
+/**
+ * A processing plan: the route plus why it was chosen.
+ */
+export type ProcessingPlan = z.infer<typeof ProcessingPlanSchema>;
 
 /**
  * Database enum types
