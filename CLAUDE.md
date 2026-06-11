@@ -20,7 +20,7 @@ pnpm format       # prettier --write
 pnpm format:check # prettier --check
 ```
 
-There is **no test suite**. Verify changes with `pnpm type-check` and `pnpm lint:check`.
+Verify changes with `pnpm type-check`, `pnpm lint:check`, and `pnpm test:coverage` (Vitest suite, ≥90% coverage; all external boundaries mocked under `test/helpers/`).
 
 The large heap (`--max-old-space-size=16384`) and `--expose-gc` flags are load-bearing: the upload path calls `global.gc()` explicitly between batches to keep memory bounded while streaming many file buffers. Don't drop these flags when adding run scripts.
 
@@ -82,3 +82,47 @@ Config is validated at startup by `EnvConfigSchema` (`src/types/index.ts`) — a
 - Naming: PascalCase classes, camelCase members/files, UPPERCASE constants/env.
 - A **Supabase MCP server** is configured (`.cursor/mcp.json`, project ref `uepacrwsmjjjsncssjis`); prefer it for live database inspection/changes over hand-writing SQL.
 - Conventional commit messages; brief title, blank line, then detailed body.
+
+<!-- gitnexus:start -->
+# GitNexus — Code Intelligence
+
+This project is indexed by GitNexus as **upload-to-tiktok** (1060 symbols, 1882 relationships, 32 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+
+> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+
+## Always Do
+
+- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
+- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
+- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
+- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
+- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
+
+## Never Do
+
+- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
+- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
+- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
+- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
+
+## Resources
+
+| Resource | Use for |
+|----------|---------|
+| `gitnexus://repo/upload-to-tiktok/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/upload-to-tiktok/clusters` | All functional areas |
+| `gitnexus://repo/upload-to-tiktok/processes` | All execution flows |
+| `gitnexus://repo/upload-to-tiktok/process/{name}` | Step-by-step execution trace |
+
+## CLI
+
+| Task | Read this skill file |
+|------|---------------------|
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+
+<!-- gitnexus:end -->
