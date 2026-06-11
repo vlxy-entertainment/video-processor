@@ -496,7 +496,6 @@ describe('processVideo failure paths', () => {
 
   it('rejects when embedPlaylistToPng fails (no playlist.m3u8)', async () => {
     const queueId = 'proc-embed-fail';
-    const outputDir = dir(queueId);
     const m = await mocks;
 
     // Seed only segment PNGs (no playlist.m3u8), so embedPlaylistToPng throws

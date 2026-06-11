@@ -66,7 +66,7 @@ describe('Scheduler', () => {
     const firstCallPromise = new Promise<void>((res) => {
       resolveFirst = res;
     });
-    m.processNextVideo.mockReturnValueOnce(firstCallPromise);
+    m.processNextVideo.mockReturnValueOnce(firstCallPromise as Promise<undefined>);
 
     const s = new Scheduler(1);
     s.start(); // fires runTask immediately → sets isProcessing = true, awaits firstCallPromise

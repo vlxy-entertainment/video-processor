@@ -46,7 +46,7 @@ const h = vi.hoisted(() => {
 
 vi.mock('fluent-ffmpeg', () => ({ default: h.ff.ffmpeg }));
 vi.mock('child_process', () => ({
-  execFile: (...args: unknown[]) => h.execFile(...(args as [])),
+  execFile: (...args: unknown[]) => h.execFile(...(args as Parameters<typeof h.execFile>)),
 }));
 
 import { ProcessingPlanner } from '@/services/processingPlanner';

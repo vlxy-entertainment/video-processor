@@ -20,10 +20,10 @@ const mocks = vi.hoisted(async () => {
   const { vi: _vi } = await import('vitest');
   return {
     fsm: makeFsMock(),
-    getActiveAccounts: _vi.fn<[], Promise<ReturnType<typeof account>[]>>(),
+    getActiveAccounts: _vi.fn<() => Promise<ReturnType<typeof account>[]>>(),
     updateUploadStats: _vi.fn(async (_id: string) => undefined as undefined),
     setAccountLimited: _vi.fn(async (_id: string) => undefined as undefined),
-    performUpload: _vi.fn<[string, ReturnType<typeof account>], Promise<string | null>>(),
+    performUpload: _vi.fn<(filePath: string, acct: ReturnType<typeof account>) => Promise<string | null>>(),
   };
 });
 
@@ -628,8 +628,6 @@ describe('TiktokUploadOrchestrator', () => {
   // updatePlaylistUrls — catch branch: readFile throws
   // -------------------------------------------------------------------------
   it('updatePlaylistUrls re-throws when readFile fails', async () => {
-    const m = await mocks;
-
     // Do NOT seed the playlist file — readFile will throw ENOENT
     const orch = new TiktokUploadOrchestrator();
 
@@ -712,7 +710,7 @@ describe('TiktokUploadOrchestrator', () => {
         uploadFilesInBatches: (
           files: string[],
           accounts: typeof acct1[],
-          config: typeof config
+          config: { batchSize: number; delayMs: number; outputDir: string }
         ) => Promise<unknown[]>;
       }
     ).uploadFilesInBatches(files, [acct1], config);
@@ -747,7 +745,7 @@ describe('TiktokUploadOrchestrator', () => {
         uploadFilesInBatches: (
           files: string[],
           accounts: typeof acct1[],
-          config: typeof config
+          config: { batchSize: number; delayMs: number; outputDir: string }
         ) => Promise<Array<{ success: boolean; error?: string }>>;
       }
     ).uploadFilesInBatches([SEG_PATH], [acct1], config);
