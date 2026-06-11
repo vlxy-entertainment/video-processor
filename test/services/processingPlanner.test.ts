@@ -90,6 +90,14 @@ describe('ProcessingPlanner', () => {
     expect(plan.route).toBe('transcode');
   });
 
+  it('falls back to 8 Mbps resolution estimate for width < 1280', async () => {
+    // No stream bit_rate, no format bit_rate, width=640 → 8 Mbps estimate.
+    // 8 Mbps × 6s ≈ 5.72 MB > 4.0 MB budget → transcode (exercises the <1280 tier).
+    h.ff.setProbe({ streams: [{ codec_type: 'video', width: 640 }], format: { bit_rate: '0' } });
+    const plan = await new ProcessingPlanner().plan('http://src');
+    expect(plan.route).toBe('transcode');
+  });
+
   it('reports an infinite keyframe gap (→ transcode) when fewer than 2 keyframes sampled', async () => {
     // Only one keyframe → maxGap = Infinity → transcode regardless of bitrate
     h.cp.stdout = '0.000000,K_\n';

@@ -287,3 +287,73 @@ describe('AppleVideoToolboxEncodingStrategy bitrate tiers', () => {
     expect(opts.join(' ')).toContain('8000k');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Branch hardening: undefined/empty streams → || 1920 / || 1080 fallback,
+// and the 1920–3839 tier (40 Mbps) for Intel, AMD and Apple.
+// ---------------------------------------------------------------------------
+describe('IntelQsvEncodingStrategy branch hardening', () => {
+  it('uses || 1920 default when streams is undefined', () => {
+    // metadata.streams is undefined → the `if (metadata.streams)` branch is false,
+    // then `metadata.streams?.[0]?.width || 1920` falls back to 1920 → 40 Mbps tier.
+    const opts = new IntelQsvEncodingStrategy().getOptions({ streams: undefined, format: {} } as any);
+    expect(opts.join(' ')).toContain('40000k');
+    expect(opts).toContain('h264_qsv');
+  });
+
+  it('uses || 1920 default when streams is empty ([])', () => {
+    // streams is defined but empty → no video stream found, width falls back to || 1920.
+    const opts = new IntelQsvEncodingStrategy().getOptions({ streams: [], format: {} } as any);
+    expect(opts.join(' ')).toContain('40000k');
+    expect(opts).toContain('h264_qsv');
+  });
+
+  it('selects 40 Mbps tier for width 1920', () => {
+    const opts = new IntelQsvEncodingStrategy().getOptions(
+      meta([{ codec_type: 'video', width: 1920 }])
+    );
+    expect(opts.join(' ')).toContain('40000k');
+  });
+});
+
+describe('AmdEncodingStrategy branch hardening', () => {
+  it('uses || 1920 default when streams is undefined', () => {
+    const opts = new AmdEncodingStrategy().getOptions({ streams: undefined, format: {} } as any);
+    expect(opts.join(' ')).toContain('40000k');
+    expect(opts).toContain('h264_amf');
+  });
+
+  it('uses || 1920 default when streams is empty ([])', () => {
+    const opts = new AmdEncodingStrategy().getOptions({ streams: [], format: {} } as any);
+    expect(opts.join(' ')).toContain('40000k');
+    expect(opts).toContain('h264_amf');
+  });
+
+  it('selects 40 Mbps tier for width 1920', () => {
+    const opts = new AmdEncodingStrategy().getOptions(
+      meta([{ codec_type: 'video', width: 1920 }])
+    );
+    expect(opts.join(' ')).toContain('40000k');
+  });
+});
+
+describe('AppleVideoToolboxEncodingStrategy branch hardening', () => {
+  it('uses || 1920 default when streams is undefined', () => {
+    const opts = new AppleVideoToolboxEncodingStrategy().getOptions({ streams: undefined, format: {} } as any);
+    expect(opts.join(' ')).toContain('40000k');
+    expect(opts).toContain('h264_videotoolbox');
+  });
+
+  it('uses || 1920 default when streams is empty ([])', () => {
+    const opts = new AppleVideoToolboxEncodingStrategy().getOptions({ streams: [], format: {} } as any);
+    expect(opts.join(' ')).toContain('40000k');
+    expect(opts).toContain('h264_videotoolbox');
+  });
+
+  it('selects 40 Mbps tier for width 1920', () => {
+    const opts = new AppleVideoToolboxEncodingStrategy().getOptions(
+      meta([{ codec_type: 'video', width: 1920 }])
+    );
+    expect(opts.join(' ')).toContain('40000k');
+  });
+});

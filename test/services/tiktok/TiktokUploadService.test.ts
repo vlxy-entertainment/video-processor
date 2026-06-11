@@ -159,6 +159,27 @@ describe('TiktokUploadService extra coverage', () => {
   });
 });
 
+describe('TiktokUploadService global.gc branch', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    post.mockReset();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    // Clean up any gc mock we may have set
+    delete (global as any).gc;
+  });
+
+  it('calls global.gc() when present after a successful upload (line 158)', async () => {
+    post.mockResolvedValue(okResponse);
+    const gcMock = vi.fn();
+    (global as any).gc = gcMock;
+    const url = await new TiktokUploadService().performUpload('/f/segment_000.png', account());
+    expect(url).toContain('img/x.png');
+    expect(gcMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('getContentType', () => {
   it('maps extensions and defaults to octet-stream', () => {
     const svc = new TiktokUploadService() as unknown as Record<string, (f: string) => string>;

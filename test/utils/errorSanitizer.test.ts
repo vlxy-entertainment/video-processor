@@ -120,6 +120,40 @@ describe('createSafeLogEntry', () => {
   });
 });
 
+describe('sanitizeResponseData branch hardening', () => {
+  it('truncates a long string under a data key (lines 154-155)', () => {
+    // String > 5000 chars → truncated with "[truncated N chars]"
+    const out = sanitizeForLogging({ data: 'x'.repeat(6000) }) as Record<string, string>;
+    expect(out.data).toContain('[truncated');
+    expect(out.data.length).toBeLessThan(6000);
+  });
+
+  it('returns a short string under a data key unchanged (line 157)', () => {
+    // String <= 5000 chars → returned as-is (no truncation)
+    const out = sanitizeForLogging({ data: 'hello world' }) as Record<string, string>;
+    expect(out.data).toBe('hello world');
+  });
+
+  it('passes a small object through unchanged (line 187)', () => {
+    // JSON.stringify({ ok: 1 }) is well under 10000 bytes → returned as-is
+    const out = sanitizeForLogging({ data: { ok: 1 } }) as Record<string, { ok: number }>;
+    expect(out.data).toEqual({ ok: 1 });
+  });
+
+  it('passes a number under data key through (line 193)', () => {
+    // Number is not string and not object → falls through to `return responseData`
+    const out = sanitizeForLogging({ data: 42 }) as Record<string, number>;
+    expect(out.data).toBe(42);
+  });
+
+  it('passes null/falsy responseData through unchanged (line 148)', () => {
+    // sanitizeResponseData is called when key is 'data', 'responseData', or 'response'.
+    // When responseData is null/falsy → returns it unchanged.
+    const out = sanitizeForLogging({ data: null }) as Record<string, null>;
+    expect(out.data).toBeNull();
+  });
+});
+
 describe('sanitizeForLogging extra branches', () => {
   it('returns truncated string for large response object without important fields (line 185)', () => {
     // A response-data object whose JSON.stringify exceeds 10000 bytes but has
