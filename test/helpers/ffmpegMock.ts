@@ -6,6 +6,12 @@ export interface FfmpegMockControl {
   fail: (err?: Error) => void;
   /** ffprobe result the next ffprobe() call yields. */
   setProbe: (data: unknown, err?: unknown) => void;
+  /**
+   * Restore the default `ffmpeg()` implementation (returns the shared command
+   * object). Call this in beforeEach after vi.clearAllMocks() to ensure any
+   * mockImplementation override from a previous test is cleared.
+   */
+  restore: () => void;
   ffmpeg: any;
 }
 
@@ -32,6 +38,8 @@ export function makeFfmpegMock(): FfmpegMockControl {
   command.run = vi.fn(() => {
     // Defer so .on() handlers are all registered first.
     queueMicrotask(() => {
+      // Always fire 'start' first so that handler is exercised in tests.
+      handlers['start']?.('ffmpeg ...');
       if (mode === 'end') handlers['end']?.();
       else handlers['error']?.(error, 'stdout', 'stderr');
     });
@@ -42,10 +50,14 @@ export function makeFfmpegMock(): FfmpegMockControl {
     cb(probeErr, probeData);
   });
 
+  /** Re-apply the original factory implementation (call after vi.clearAllMocks()). */
+  const restore = () => ffmpeg.mockImplementation(() => command);
+
   return {
     ffmpeg,
     succeed: () => { mode = 'end'; },
     fail: (err?: Error) => { mode = 'error'; if (err) error = err; },
     setProbe: (data: unknown, err: unknown = null) => { probeData = data; probeErr = err; },
+    restore,
   };
 }
