@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { queueItem } from '../helpers/fixtures';
 
-const state = vi.hoisted(() => ({ results: [] as { data: unknown; error: unknown }[] }));
+const state = vi.hoisted(() => ({
+  results: [] as { data: unknown; error: unknown }[],
+  throwNext: false,
+}));
 vi.mock('@/config/supabase', () => {
   const builder: any = {};
   for (const mth of ['select', 'insert', 'update', 'delete', 'eq', 'order', 'limit'])
@@ -12,7 +15,20 @@ vi.mock('@/config/supabase', () => {
       error: null,
     };
   builder.single = () => Promise.resolve(next());
-  builder.then = (f: (v: unknown) => unknown) => Promise.resolve(next()).then(f);
+  // `then` must accept BOTH onFulfilled and onRejected, since `await builder`
+  // calls `builder.then(resolve, reject)`. Returning a value from `then` does
+  // NOT resolve/reject the awaited expression — only calling resolve/reject does.
+  builder.then = (
+    resolve: (v: unknown) => unknown,
+    reject: (e: unknown) => unknown
+  ) => {
+    if (state.throwNext) {
+      state.throwNext = false;
+      reject(new Error('supabase threw'));
+      return;
+    }
+    Promise.resolve(next()).then(resolve, reject);
+  };
   return { supabase: { from: () => builder } };
 });
 
@@ -20,6 +36,7 @@ import { QueueService } from '@/services/queueService';
 
 beforeEach(() => {
   state.results = [];
+  state.throwNext = false;
 });
 
 // ---------------------------------------------------------------------------
@@ -191,5 +208,33 @@ describe('QueueService.removeFromQueue', () => {
   it('throws on error', async () => {
     state.results = [{ data: null, error: { message: 'delete fail' } }];
     await expect(new QueueService().removeFromQueue('some-id')).rejects.toThrow('delete fail');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// catch-block coverage: throw paths (lines 160-161, 236-237)
+// ---------------------------------------------------------------------------
+describe('QueueService catch-block throws', () => {
+  it('getNextIndex catch: returns 0 when supabase throws synchronously', async () => {
+    // Make builder.then throw so the awaited chain rejects inside getNextIndex's try
+    state.throwNext = true;
+    // addToQueue calls getNextIndex first; if it catches, falls back to 0
+    // then insert still needs a result
+    state.results = [{ data: queueItem({ index: 0 }), error: null }];
+    const created = await new QueueService().addToQueue();
+    expect(created.index).toBe(0);
+    state.throwNext = false;
+  });
+
+  it('getNextItem outer catch: returns null when schema parse throws', async () => {
+    // Feed valid-looking but schema-invalid data as the queued item so parse() throws
+    // status 'invalid' is not in the enum so Zod will throw
+    state.results = [
+      { data: [], error: null }, // no processing items
+      { data: [{ index: 0, status: 'invalid_status', progress: 0 }], error: null }, // invalid status
+    ];
+    // schema parse will throw on invalid status → caught by outer catch → returns null
+    const result = await new QueueService().getNextItem();
+    expect(result).toBeNull();
   });
 });

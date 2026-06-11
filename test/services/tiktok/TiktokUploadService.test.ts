@@ -106,6 +106,59 @@ describe('TiktokUploadService', () => {
   });
 });
 
+describe('TiktokUploadService extra coverage', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    post.mockReset();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('testConnection returns true', async () => {
+    const svc = new TiktokUploadService();
+    await expect(svc.testConnection(account())).resolves.toBe(true);
+  });
+
+  it('logs and rethrows error with string response.data (covers lines 197-210)', async () => {
+    // Non-retryable error (403) so it goes straight to error logging path
+    // response.data is a string so the string branch at line 199 executes
+    const err = Object.assign(new Error('403 Forbidden'), {
+      response: { status: 403, statusText: 'Forbidden', data: 'error text' },
+    });
+    post.mockRejectedValue(err);
+    await expect(new TiktokUploadService().performUpload('/f.png', account())).rejects.toBe(err);
+  });
+
+  it('logs error with large response.data string triggers truncation (covers line 204-205)', async () => {
+    const bigStr = 'x'.repeat(5001);
+    const err = Object.assign(new Error('503'), {
+      response: { status: 403, statusText: 'Forbidden', data: bigStr },
+    });
+    post.mockRejectedValue(err);
+    await expect(new TiktokUploadService().performUpload('/f.png', account())).rejects.toBe(err);
+  });
+
+  it('logs error with object response.data (covers JSON.stringify branch at line 201)', async () => {
+    const err = Object.assign(new Error('403'), {
+      response: { status: 403, statusText: 'Forbidden', data: { code: 403, msg: 'bad' } },
+    });
+    post.mockRejectedValue(err);
+    await expect(new TiktokUploadService().performUpload('/f.png', account())).rejects.toBe(err);
+  });
+
+  it('logs error with JSON.stringify-failing response.data (covers catch at line 209-210)', async () => {
+    // Create a circular object that JSON.stringify cannot serialize
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    const err = Object.assign(new Error('403'), {
+      response: { status: 403, statusText: 'Forbidden', data: circular },
+    });
+    post.mockRejectedValue(err);
+    await expect(new TiktokUploadService().performUpload('/f.png', account())).rejects.toBe(err);
+  });
+});
+
 describe('getContentType', () => {
   it('maps extensions and defaults to octet-stream', () => {
     const svc = new TiktokUploadService() as unknown as Record<string, (f: string) => string>;

@@ -22,4 +22,17 @@ describe('getEnvConfig', () => {
     // The module-level `envConfig = getEnvConfig()` runs at import, so the import itself rejects.
     await expect(import('@/config')).rejects.toThrow(/Environment configuration error/);
   });
+
+  it('throws Unknown error when EnvConfigSchema.parse throws a non-Error value (line 19)', async () => {
+    // We need EnvConfigSchema.parse to throw a non-Error. Mock the types module
+    // so that parse() throws a plain string.
+    vi.doMock('@/types', () => ({
+      EnvConfigSchema: { parse: () => { throw 'not an Error object'; } },
+    }));
+    vi.resetModules();
+    vi.doMock('@/types', () => ({
+      EnvConfigSchema: { parse: () => { throw 'not an Error object'; } },
+    }));
+    await expect(import('@/config')).rejects.toThrow('Unknown environment configuration error');
+  });
 });

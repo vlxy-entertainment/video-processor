@@ -220,3 +220,70 @@ describe('AMD + Apple strategies', () => {
     expect(new AppleVideoToolboxEncodingStrategy().getOptions(meta([{ width: 1920 }])).length).toBeGreaterThan(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Branch coverage: 4K and low-res bitrate tiers + undefined width/height
+// ---------------------------------------------------------------------------
+describe('NvidiaEncodingStrategy getOptions branches', () => {
+  it('falls back to 1920/1080 defaults when streams have no width/height', () => {
+    // streams[0].width is undefined → || 1920 branch, height → || 1080
+    const opts = new NvidiaEncodingStrategy().getOptions(meta([{}]));
+    expect(opts).toContain('h264_nvenc');
+    // No scale filter since fallback is 1920x1080
+    expect(opts).not.toContain('-vf');
+  });
+
+  it('falls back to defaults when streams is empty', () => {
+    const opts = new NvidiaEncodingStrategy().getOptions(meta([]));
+    expect(opts).toContain('h264_nvenc');
+    expect(opts).not.toContain('-vf');
+  });
+});
+
+describe('AmdEncodingStrategy bitrate tiers', () => {
+  it('selects 4K bitrate for width >= 3840', () => {
+    const opts = new AmdEncodingStrategy().getOptions(
+      meta([{ codec_type: 'video', width: 3840 }])
+    );
+    expect(opts.join(' ')).toContain('120000k');
+  });
+
+  it('selects low-res bitrate for width < 1280', () => {
+    const opts = new AmdEncodingStrategy().getOptions(
+      meta([{ codec_type: 'video', width: 640 }])
+    );
+    expect(opts.join(' ')).toContain('8000k');
+  });
+});
+
+describe('IntelQsvEncodingStrategy bitrate tiers', () => {
+  it('selects 4K bitrate for width >= 3840', () => {
+    const opts = new IntelQsvEncodingStrategy().getOptions(
+      meta([{ codec_type: 'video', width: 3840 }])
+    );
+    expect(opts.join(' ')).toContain('120000k');
+  });
+
+  it('selects low-res bitrate for width < 1280', () => {
+    const opts = new IntelQsvEncodingStrategy().getOptions(
+      meta([{ codec_type: 'video', width: 640 }])
+    );
+    expect(opts.join(' ')).toContain('8000k');
+  });
+});
+
+describe('AppleVideoToolboxEncodingStrategy bitrate tiers', () => {
+  it('selects 4K bitrate for width >= 3840', () => {
+    const opts = new AppleVideoToolboxEncodingStrategy().getOptions(
+      meta([{ codec_type: 'video', width: 3840 }])
+    );
+    expect(opts.join(' ')).toContain('120000k');
+  });
+
+  it('selects low-res bitrate for width < 1280', () => {
+    const opts = new AppleVideoToolboxEncodingStrategy().getOptions(
+      meta([{ codec_type: 'video', width: 640 }])
+    );
+    expect(opts.join(' ')).toContain('8000k');
+  });
+});
