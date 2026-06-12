@@ -67,3 +67,5 @@ jspm_packages/
 ehthumbs.db
 Thumbs.db
 .env*
+# understand-anything local analysis cache
+.understand-anything/
