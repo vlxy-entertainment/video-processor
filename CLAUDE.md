@@ -126,3 +126,13 @@ This project is indexed by GitNexus as **upload-to-tiktok** (1060 symbols, 1882 
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+## Workflow
+
+This repo follows the VLXY workflow standard (`../vlxy-docs/docs/workflow.md`; summary in `../CLAUDE.md`).
+
+- **Branch:** `develop`.
+- **Test runner:** Vitest — `pnpm test`, `pnpm test:coverage` (≥90% coverage; all external boundaries mocked under `test/helpers/`).
+- **Quality gates before done:** `pnpm type-check`, `pnpm lint:check`, `pnpm test:coverage`.
+- **TDD:** mandatory for services, utils, data transforms, and Zod schemas; bug fixes start with a failing regression test. Real red → green → refactor, one behavior at a time.
+- **Docs:** update this repo's docs on any contract/command change; update `vlxy-docs` per the standard's trigger table. This repo owns the shared-schema migrations and is the only writer of the `videos` table, so schema/flow/status changes here almost always require a `vlxy-docs` companion commit.
