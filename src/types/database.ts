@@ -62,6 +62,7 @@ export type Database = {
           cooldown_until: string | null;
           created_at: string | null;
           csrftoken: string | null;
+          raw_string: string | null;
           id: string;
           last_upload_at: string | null;
           name: string;
@@ -75,6 +76,7 @@ export type Database = {
           cooldown_until?: string | null;
           created_at?: string | null;
           csrftoken?: string | null;
+          raw_string?: string | null;
           id?: string;
           last_upload_at?: string | null;
           name: string;
@@ -88,6 +90,7 @@ export type Database = {
           cooldown_until?: string | null;
           created_at?: string | null;
           csrftoken?: string | null;
+          raw_string?: string | null;
           id?: string;
           last_upload_at?: string | null;
           name?: string;
