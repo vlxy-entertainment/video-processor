@@ -108,7 +108,6 @@ export class TiktokUploadService {
         filename: fileName,
         contentType: this.getContentType(fileName),
       });
-      formData.append('source', '0');
 
       const cookieHeader = `tt_csrf_token=${csrfToken}; sid_guard=${account.sid_guard_ads}`;
 

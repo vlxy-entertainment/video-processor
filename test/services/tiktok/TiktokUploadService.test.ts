@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import FormData from 'form-data';
 import { account } from '../../helpers/fixtures';
 
 // vi.hoisted ensures `post` is available when the mock factory runs.
@@ -44,6 +45,16 @@ describe('TiktokUploadService', () => {
     post.mockResolvedValue(okResponse);
     const url = await new TiktokUploadService().performUpload('/f/segment_000.png', account());
     expect(url).toContain('img/x.png');
+  });
+
+  it('does not append a "source" field to the upload form', async () => {
+    post.mockResolvedValue(okResponse);
+    const appendSpy = vi.spyOn(FormData.prototype, 'append');
+    await new TiktokUploadService().performUpload('/f/segment_000.png', account());
+    const appendedFields = appendSpy.mock.calls.map((c) => c[0]);
+    expect(appendedFields).toContain('file');
+    expect(appendedFields).not.toContain('source');
+    appendSpy.mockRestore();
   });
 
   it('returns null when status_code is non-zero', async () => {
