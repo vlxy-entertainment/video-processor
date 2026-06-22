@@ -56,7 +56,11 @@ The upload **must** send the multipart field `source=0` (`TiktokUploadService`).
 
 ### Routing & encoding strategies (`src/services/`)
 
-Before encoding, `ProcessingPlanner` (`src/services/processingPlanner.ts`) probes the source (bitrate + max keyframe gap, bounded to the first 60s) and routes it: **remux** (`-c copy`, no re-encode, no GPU) when the predicted worst-case segment stays under `MAX_SEGMENT_SIZE_MB × SEGMENT_SIZE_SAFETY_MARGIN`, otherwise **transcode**. A remux that unexpectedly yields an oversize segment falls back to a one-shot transcode (`validateSegmentSizes` re-check in `processVideo`).
+Before encoding, `ProcessingPlanner` (`src/services/processingPlanner.ts`) probes the source once and routes it. Two gates must both pass to **remux** (`-c copy`, no re-encode, no GPU), otherwise it **transcodes**:
+1. **Codec gate** — remux only when the source is **H.264 video + AAC audio** (the only codecs the website's hls.js/MediaSource player decodes reliably; HEVC/VP9/AV1/Opus upload fine but fail playback silently). Anything else transcodes regardless of size.
+2. **Size gate** — predicted worst-case segment ≤ `MAX_SEGMENT_SIZE_MB × SEGMENT_SIZE_SAFETY_MARGIN`. The prediction is `bitrate × (HLS_SEGMENT_DURATION_SECONDS + maxKeyframeGap)` — a remux cut lands on a keyframe at/after the duration target, so a segment runs ~`HLS_SEGMENT_DURATION` plus up to one keyframe gap. (Counting the gap alone under-predicts dense-keyframe sources ~5×, which previously caused mass-oversize remuxes that fell back to transcode anyway.)
+
+A remux that still yields an oversize segment falls back to a one-shot transcode (`validateSegmentSizes` re-check in `processVideo`) — now a rare VBR-peak safety net rather than the systematic path.
 
 For the transcode path, a Strategy + Factory pattern selects the encoder. `EncodingStrategyFactory.createStrategy()` probes the host **once** (cached) in priority order **NVENC → Intel QSV → libx264** and returns the first available; libx264 is the guaranteed fallback, so the same binary runs on a GPU box or a CPU-only server. Each strategy's `isAvailable()` runs a `-f lavfi` test encode. Keyframe placement is owned solely by `VideoProcessor.runFFmpegConversion` (not the strategies), and NVENC uses capped-quality VBR (`-cq` with a `-maxrate` ceiling) rather than fixed CBR.
 

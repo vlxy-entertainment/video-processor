@@ -17,29 +17,72 @@ export class ProcessingPlanner {
   private readonly probeWindowSeconds = 60;
 
   /**
+   * Codecs that remux (`-c copy`) may pass through. The public site plays via
+   * hls.js/MediaSource, which reliably decodes only H.264 video + AAC audio;
+   * anything else (HEVC, VP9, AV1, Opus, …) uploads fine but fails playback
+   * silently, so it must be re-encoded rather than remuxed.
+   */
+  private readonly remuxSafeVideoCodec = 'h264';
+  private readonly remuxSafeAudioCodec = 'aac';
+
+  /**
    * Builds a processing plan for a source URL.
    * @param sourceUrl The source video URL (e.g. a TorBox temporary URL).
    * @returns The selected route and the reasoning.
    */
   async plan(sourceUrl: string): Promise<ProcessingPlan> {
     try {
-      const bitrateBps = await this.getVideoBitrateBps(sourceUrl);
+      const metadata = await this.probeMetadata(sourceUrl);
+      const videoStream = metadata.streams?.find(s => s.codec_type === 'video');
+      const audioStream = metadata.streams?.find(s => s.codec_type === 'audio');
+
+      // Codec gate (before the size math): remux only passes through codecs the
+      // browser player can decode. Re-encode everything else regardless of size.
+      const videoCodec = videoStream?.codec_name;
+      if (videoCodec !== this.remuxSafeVideoCodec) {
+        return {
+          route: 'transcode',
+          reason:
+            `video codec '${videoCodec ?? 'unknown'}' is not remux-safe ` +
+            `(only ${this.remuxSafeVideoCodec}) — re-encode`,
+        };
+      }
+      const audioCodec = audioStream?.codec_name;
+      if (audioStream && audioCodec !== this.remuxSafeAudioCodec) {
+        return {
+          route: 'transcode',
+          reason:
+            `audio codec '${audioCodec ?? 'unknown'}' is not remux-safe ` +
+            `(only ${this.remuxSafeAudioCodec}) — re-encode`,
+        };
+      }
+
+      const bitrateBps = this.extractBitrateBps(metadata);
       const maxKeyframeGapSeconds = await this.getMaxKeyframeGapSeconds(sourceUrl);
 
-      // Worst-case segment: a remux can only cut at keyframes, so a segment can
-      // span an entire keyframe gap at the source's bitrate.
-      const predictedMaxSegmentBytes = (bitrateBps / 8) * maxKeyframeGapSeconds;
+      // Worst-case segment duration: a remux cut only lands on a keyframe at or
+      // after the target duration, so a segment runs ~HLS_SEGMENT_DURATION long
+      // and can extend by up to one keyframe gap. Counting the gap alone (the
+      // old bug) under-predicts dense-keyframe sources ~5x and wrongly remuxes.
+      const worstCaseSegmentSeconds =
+        envConfig.HLS_SEGMENT_DURATION_SECONDS + maxKeyframeGapSeconds;
+      const predictedMaxSegmentBytes = (bitrateBps / 8) * worstCaseSegmentSeconds;
       const predictedMaxSegmentMB = predictedMaxSegmentBytes / (1024 * 1024);
 
       const budgetMB = envConfig.MAX_SEGMENT_SIZE_MB * envConfig.SEGMENT_SIZE_SAFETY_MARGIN;
 
-      if (predictedMaxSegmentMB > 0 && predictedMaxSegmentMB <= budgetMB) {
+      if (
+        Number.isFinite(predictedMaxSegmentMB) &&
+        predictedMaxSegmentMB > 0 &&
+        predictedMaxSegmentMB <= budgetMB
+      ) {
         return {
           route: 'remux',
           reason:
             `predicted max segment ${predictedMaxSegmentMB.toFixed(2)}MB ` +
             `<= budget ${budgetMB.toFixed(2)}MB ` +
             `(bitrate ${(bitrateBps / 1_000_000).toFixed(2)}Mbps, ` +
+            `hls ${envConfig.HLS_SEGMENT_DURATION_SECONDS}s + ` +
             `max keyframe gap ${maxKeyframeGapSeconds.toFixed(2)}s)`,
           predictedMaxSegmentMB,
         };
@@ -61,15 +104,22 @@ export class ProcessingPlanner {
   }
 
   /**
-   * Reads the video stream's bitrate (bps). Falls back to the container bitrate,
-   * then to a resolution-based estimate.
+   * Probes the source once with ffprobe. Reused for both the codec gate and the
+   * bitrate estimate so a single probe drives the whole routing decision.
    * @param sourceUrl The source URL.
    */
-  private async getVideoBitrateBps(sourceUrl: string): Promise<number> {
-    const metadata = await new Promise<ffmpeg.FfprobeData>((resolve, reject) => {
+  private async probeMetadata(sourceUrl: string): Promise<ffmpeg.FfprobeData> {
+    return new Promise<ffmpeg.FfprobeData>((resolve, reject) => {
       ffmpeg.ffprobe(sourceUrl, (err, data) => (err ? reject(err) : resolve(data)));
     });
+  }
 
+  /**
+   * Reads the video stream's bitrate (bps) from already-probed metadata. Falls
+   * back to the container bitrate, then to a resolution-based estimate.
+   * @param metadata ffprobe metadata from {@link probeMetadata}.
+   */
+  private extractBitrateBps(metadata: ffmpeg.FfprobeData): number {
     const videoStream = metadata.streams?.find(s => s.codec_type === 'video');
     const streamBitrate = videoStream?.bit_rate ? parseInt(videoStream.bit_rate, 10) : 0;
     if (streamBitrate > 0) return streamBitrate;

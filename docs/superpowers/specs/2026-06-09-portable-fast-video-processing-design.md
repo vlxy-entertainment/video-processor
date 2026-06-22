@@ -43,9 +43,12 @@ expensive thing possible:
 
 - **"Same output" = visually identical, any codec.** Encoder, codec, and
   bitrate are free to change; the PNG-wrapped HLS format is fixed.
-- **Playback client is codec-agnostic.** It can decode anything playable, so the
-  routing decision needs **no codec allowlist and no resolution check for their
-  own sake** — both matter only insofar as they affect segment size.
+- **Playback client is NOT codec-agnostic** *(corrected 2026-06-22).* The original
+  design assumed the player could decode anything; in reality the website uses
+  hls.js/MediaSource, which reliably decodes only **H.264 + AAC** (HEVC/VP9/AV1/Opus
+  fail playback silently). Remux therefore **requires a codec allowlist**: only
+  H.264 video + AAC audio may be stream-copied; everything else must transcode.
+  Resolution still has no branch of its own — it matters only via segment size.
 - **`<5 MB` per segment** is the hard hosting constraint (TikTok image upload).
 - Detection of hardware must happen **once at startup**, not per video.
 
@@ -99,11 +102,16 @@ ProcessingPlan = { route: 'remux' | 'transcode', reason: string }
   (e.g. `ffprobe -select_streams v -show_packets -show_entries
   packet=pts_time,flags` and measuring the largest gap between keyframes), or an
   equivalent that yields the worst-case GOP duration.
-- **Predicted max segment bytes ≈ peak_bitrate × max_keyframe_gap_seconds.**
-  Apply a safety margin (e.g. 0.8 × the 5 MB budget) to absorb estimation error.
-- If predicted max segment < budget → **REMUX**. Otherwise → **TRANSCODE**.
+- **Predicted max segment bytes ≈ bitrate × (hls_time + max_keyframe_gap_seconds)**
+  *(corrected 2026-06-22; was `× max_keyframe_gap` alone, which under-predicted
+  dense-keyframe sources ~5× — a remux segment runs ~hls_time long, extended by up
+  to one keyframe gap, not just one gap).* Apply a safety margin (e.g. 0.8 × the
+  5 MB budget) to absorb estimation error.
+- **Codec gate first**, then: if predicted max segment < budget → **REMUX**,
+  otherwise → **TRANSCODE**.
 
-No codec or resolution branch: a codec-agnostic player makes those irrelevant
+The codec gate (H.264 + AAC only) is required — see corrected constraint above.
+Resolution still has no branch of its own; it matters only via segment size
 except through their effect on bitrate/segment size, which the guard already
 captures. A 4K high-bitrate source naturally fails the guard and routes to
 transcode (where it is downscaled), which is the correct outcome.
