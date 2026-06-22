@@ -58,7 +58,7 @@ graph TB
 |---|---|---|
 | **Supabase** (service-role key) | Shared Postgres backend; RLS bypassed — see [`src/config/supabase.ts`](../../src/config/supabase.ts) | **Reads/claims** `video_processing_queue` rows (atomic `queued → processing` flip, ordered by `index`); **writes** `videos` rows (`hls_playlist_url`, status `ready`/`failed`); **reads and updates** `tiktok_accounts` (credentials, cooldown status) |
 | **TorBox API** | BitTorrent-as-a-service that issues temporary signed download URLs for cached torrent files | `TorboxService.requestDownloadUrl(torrent_id, file_id)` fetches a short-lived URL that the pipeline streams from; authenticated via `TORBOX_TOKEN` env var |
-| **TikTok upload API + image CDN** | TikTok's internal upload endpoint (`api/upload/image/`) and CDN (`p16-sg.tiktokcdn.com`) | `TiktokUploadOrchestrator` POSTs PNG-wrapped HLS segment files and the playlist; collects returned CDN URIs; the final playlist CDN URL is stored in `videos.hls_playlist_url` |
+| **TikTok upload API + image CDN** | TikTok's internal upload endpoint (`api/upload/image/`) and CDN (`p16-webcast.tiktokcdn.com`) | `TiktokUploadOrchestrator` POSTs PNG-wrapped HLS segment files and the playlist; collects returned CDN URIs; the final playlist CDN URL is stored in `videos.hls_playlist_url` |
 | **IndexNow** | SEO search-index ping protocol | `IndexNowService.submitVideo()` is called after each successful `videos` row is written; a fire-and-forget HTTP ping |
 
 ### Sibling apps

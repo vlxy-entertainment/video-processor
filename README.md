@@ -63,7 +63,7 @@ LOG_FILE_PATH=./logs/app.log
 
 # TikTok Configuration
 TIKTOK_API_ENDPOINT=https://www.tiktok.com/
-TIKTOK_IMG_CDN=https://p16-sg.tiktokcdn.com/obj/
+TIKTOK_IMG_CDN=https://p16-webcast.tiktokcdn.com/obj/
 
 # TikTok Upload Batch Configuration
 TIKTOK_BATCH_SIZE=5
@@ -132,7 +132,7 @@ The system automatically detects and uses:
 | `LOG_LEVEL` | Logging level (error, warn, info, debug) | info | No |
 | `LOG_FILE_PATH` | Path to the log file | ./logs/app.log | No |
 | `TIKTOK_API_ENDPOINT` | TikTok API endpoint | https://www.tiktok.com/ | No |
-| `TIKTOK_IMG_CDN` | TikTok CDN URL for images | https://p16-sg.tiktokcdn.com/obj/ | No |
+| `TIKTOK_IMG_CDN` | TikTok CDN URL for images | https://p16-webcast.tiktokcdn.com/obj/ | No |
 | `TIKTOK_BATCH_SIZE` | Number of videos to upload per batch | 5 | No |
 | `TIKTOK_BATCH_DELAY_MS` | Delay between batch uploads in milliseconds | 5000 | No |
 

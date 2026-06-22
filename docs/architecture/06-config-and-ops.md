@@ -32,7 +32,7 @@ is missing or fails its constraint the process throws and exits before the worke
 
 ### env.example vs code-default divergence
 
-`env.example` sets `TIKTOK_IMG_CDN=https://p16-sg.tiktokcdn.com/obj/` — a different CDN
+`env.example` sets `TIKTOK_IMG_CDN=https://p16-webcast.tiktokcdn.com/obj/` — a different CDN
 host from the `EnvConfigSchema` Zod default (`https://p21-ad-sg.ibyteimg.com/obj/`).
 `EnvConfigSchema` is authoritative for validation and fallback behaviour; the example
 value may reflect a prior or region-specific endpoint. Set the variable explicitly in
