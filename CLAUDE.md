@@ -52,6 +52,8 @@ The orchestrator (`src/services/tiktokUploadOrchestrator.ts`) uploads each segme
 
 When editing the embed/extract logic, the PNG↔payload boundary (`IEND` signature `49 45 4E 44 AE 42 60 82`) must stay consistent between `videoProcessor.ts` (writes) and `tiktokUploadOrchestrator.ts` (reads).
 
+The upload **must** send the multipart field `source=0` (`TiktokUploadService`). It routes the upload to TikTok's origin-preserving object store; without it TikTok re-encodes the file as a normal image and **strips every byte after `IEND`** — the hosted PNG comes back as a bare ~70-byte 1×1 image and playback breaks even though the upload "succeeds." This field is load-bearing for the steganography, not optional.
+
 ### Routing & encoding strategies (`src/services/`)
 
 Before encoding, `ProcessingPlanner` (`src/services/processingPlanner.ts`) probes the source (bitrate + max keyframe gap, bounded to the first 60s) and routes it: **remux** (`-c copy`, no re-encode, no GPU) when the predicted worst-case segment stays under `MAX_SEGMENT_SIZE_MB × SEGMENT_SIZE_SAFETY_MARGIN`, otherwise **transcode**. A remux that unexpectedly yields an oversize segment falls back to a one-shot transcode (`validateSegmentSizes` re-check in `processVideo`).

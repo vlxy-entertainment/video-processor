@@ -47,13 +47,19 @@ describe('TiktokUploadService', () => {
     expect(url).toContain('img/x.png');
   });
 
-  it('does not append a "source" field to the upload form', async () => {
+  // TikTok routes uploads carrying source='0' to its origin-preserving object
+  // store; without it the upload is re-encoded as an image and every byte after
+  // the PNG IEND chunk (the embedded HLS payload) is stripped. The field is
+  // load-bearing for the steganography — see the regression where catalog videos
+  // served bare 70-byte 1x1 PNGs.
+  it("appends source='0' to the upload form so TikTok preserves the post-IEND payload", async () => {
     post.mockResolvedValue(okResponse);
     const appendSpy = vi.spyOn(FormData.prototype, 'append');
     await new TiktokUploadService().performUpload('/f/segment_000.png', account());
-    const appendedFields = appendSpy.mock.calls.map((c) => c[0]);
-    expect(appendedFields).toContain('file');
-    expect(appendedFields).not.toContain('source');
+    const sourceCall = appendSpy.mock.calls.find((c) => c[0] === 'source');
+    expect(appendSpy.mock.calls.map((c) => c[0])).toContain('file');
+    expect(sourceCall).toBeDefined();
+    expect(sourceCall?.[1]).toBe('0');
     appendSpy.mockRestore();
   });
 

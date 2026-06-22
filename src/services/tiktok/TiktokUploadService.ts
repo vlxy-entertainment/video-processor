@@ -108,6 +108,10 @@ export class TiktokUploadService {
         filename: fileName,
         contentType: this.getContentType(fileName),
       });
+      // Load-bearing: source='0' routes the upload to TikTok's origin-preserving
+      // object store. Without it TikTok re-encodes the file as an image and strips
+      // every byte after the PNG IEND chunk — destroying the embedded HLS payload.
+      formData.append('source', '0');
 
       const cookieHeader = `tt_csrf_token=${csrfToken}; sid_guard=${account.sid_guard_ads}`;
 
