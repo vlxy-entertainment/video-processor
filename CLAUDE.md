@@ -66,7 +66,7 @@ For the transcode path, a Strategy + Factory pattern selects the encoder. `Encod
 
 ### Upload resilience
 
-Two retry layers: `TiktokUploadService` retries 5xx/timeout HTTP errors with exponential backoff + jitter per file; `TiktokUploadOrchestrator` batches uploads (`TIKTOK_BATCH_SIZE`, `TIKTOK_BATCH_DELAY_MS`), distributes them round-robin across active accounts, and retries whole failed files on rotated accounts. A `403` marks the account `limited` (24h cooldown) via `TiktokAccountService`.
+Two retry layers: `TiktokUploadService` retries 5xx/timeout HTTP errors with exponential backoff + jitter per file; `TiktokUploadOrchestrator` batches uploads (batch size = active accounts × `TIKTOK_ITEMS_PER_ACCOUNT`, `TIKTOK_BATCH_DELAY_MS` between batches), distributes them round-robin across active accounts, and retries whole failed files on rotated accounts. A `403` marks the account `limited` (24h cooldown) via `TiktokAccountService`.
 
 ## Data layer
 

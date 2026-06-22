@@ -10,6 +10,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { wrapInPng, account } from '../helpers/fixtures';
+import { logger } from '@/utils/logger';
 
 // ---------------------------------------------------------------------------
 // Hoisted mock fns + fs fake — must be declared before any vi.mock() calls.
@@ -141,6 +142,33 @@ describe('TiktokUploadOrchestrator', () => {
     expect(url).toBe('https://cdn/uploaded-playlist.png');
     // updateUploadStats should have been called at least once (per successful upload)
     expect(m.updateUploadStats).toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // uploadProcessedFiles — batch size derives from active account count
+  // -------------------------------------------------------------------------
+  it('sets batch size to activeAccounts × TIKTOK_ITEMS_PER_ACCOUNT (default 10)', async () => {
+    const m = await mocks;
+    vi.mocked(logger.info).mockClear();
+
+    // 2 active accounts × default ratio 10 → batch size 20
+    m.getActiveAccounts.mockResolvedValue([
+      account({ id: 'a1', name: 'a1' }),
+      account({ id: 'a2', name: 'a2' }),
+    ]);
+    await seedFiles({
+      [SEG_PATH]: wrapInPng('seg-data'),
+      [PLAYLIST_PATH]: wrapInPng(PLAYLIST_M3U8),
+    });
+    m.performUpload
+      .mockResolvedValueOnce('https://cdn/uploaded-seg.png')
+      .mockResolvedValueOnce('https://cdn/uploaded-playlist.png');
+
+    const orch = new TiktokUploadOrchestrator();
+    await orch.uploadProcessedFiles(DIR);
+
+    // The batching log reports the derived size: 2 accounts × 10 = 20.
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('batches of 20'));
   });
 
   // -------------------------------------------------------------------------

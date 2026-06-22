@@ -10,11 +10,11 @@ export const EnvConfigSchema = z.object({
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
   LOG_FILE_PATH: z.string().default('./logs/app.log'),
   TIKTOK_API_ENDPOINT: z.string().url('Invalid TikTok API endpoint'),
-  TIKTOK_BATCH_SIZE: z
+  TIKTOK_ITEMS_PER_ACCOUNT: z
     .string()
     .transform(val => parseInt(val, 10))
     .pipe(z.number().int().min(1))
-    .default('5'),
+    .default('10'),
   TIKTOK_BATCH_DELAY_MS: z
     .string()
     .transform(val => parseInt(val, 10))

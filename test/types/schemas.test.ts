@@ -18,7 +18,7 @@ const baseEnv = {
 describe('EnvConfigSchema', () => {
   it('applies defaults and transforms', () => {
     const cfg = EnvConfigSchema.parse(baseEnv);
-    expect(cfg.TIKTOK_BATCH_SIZE).toBe(5);
+    expect(cfg.TIKTOK_ITEMS_PER_ACCOUNT).toBe(10);
     expect(cfg.TIKTOK_BATCH_DELAY_MS).toBe(5000);
     expect(cfg.MAX_SEGMENT_SIZE_MB).toBe(5);
     expect(cfg.SEGMENT_SIZE_SAFETY_MARGIN).toBe(0.8);
@@ -38,9 +38,17 @@ describe('EnvConfigSchema', () => {
   });
 
   it('parses provided string numbers', () => {
-    const cfg = EnvConfigSchema.parse({ ...baseEnv, TIKTOK_BATCH_SIZE: '8', MAX_SEGMENT_SIZE_MB: '9.5' });
-    expect(cfg.TIKTOK_BATCH_SIZE).toBe(8);
+    const cfg = EnvConfigSchema.parse({
+      ...baseEnv,
+      TIKTOK_ITEMS_PER_ACCOUNT: '8',
+      MAX_SEGMENT_SIZE_MB: '9.5',
+    });
+    expect(cfg.TIKTOK_ITEMS_PER_ACCOUNT).toBe(8);
     expect(cfg.MAX_SEGMENT_SIZE_MB).toBe(9.5);
+  });
+
+  it('rejects TIKTOK_ITEMS_PER_ACCOUNT below 1', () => {
+    expect(() => EnvConfigSchema.parse({ ...baseEnv, TIKTOK_ITEMS_PER_ACCOUNT: '0' })).toThrow();
   });
 });
 

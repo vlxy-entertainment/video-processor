@@ -76,12 +76,6 @@ export class TiktokUploadOrchestrator {
   async uploadProcessedFiles(outputDir: string): Promise<string> {
     logger.info(`Starting TikTok upload orchestration for: ${outputDir}`);
 
-    const config: BatchUploadConfig = {
-      batchSize: envConfig.TIKTOK_BATCH_SIZE,
-      delayMs: envConfig.TIKTOK_BATCH_DELAY_MS,
-      outputDir,
-    };
-
     // Step 1: Get active TikTok accounts
     const activeAccounts = await this.accountService.getActiveAccounts();
     if (activeAccounts.length === 0) {
@@ -89,6 +83,20 @@ export class TiktokUploadOrchestrator {
     }
 
     logger.info(`Found ${activeAccounts.length} active TikTok accounts for upload distribution`);
+
+    // Batch size scales with the account pool so each active account handles a
+    // fixed number of uploads per batch (TIKTOK_ITEMS_PER_ACCOUNT), regardless of
+    // how many accounts exist. activeAccounts.length is >= 1 (guarded above).
+    const batchSize = activeAccounts.length * envConfig.TIKTOK_ITEMS_PER_ACCOUNT;
+    const config: BatchUploadConfig = {
+      batchSize,
+      delayMs: envConfig.TIKTOK_BATCH_DELAY_MS,
+      outputDir,
+    };
+    logger.info(
+      `Batch size ${batchSize} = ${activeAccounts.length} active account(s) × ` +
+        `${envConfig.TIKTOK_ITEMS_PER_ACCOUNT} items/account`
+    );
 
     // Step 2: Get all files to upload
     const filesToUpload = await this.getFilesToUpload(outputDir);
